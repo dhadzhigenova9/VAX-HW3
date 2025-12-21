@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Оглеждане в стая</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<style>
+body {
+	margin: 0;
+	overflow: hidden;
+	background: #000;
+}
+</style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+let scene, camera, renderer;
+
+const SMOOTH = 0.15;
+let currentQ = new THREE.Quaternion();
+let initialQuaternion = null;
+
+init();
+animate();
+
+function init() {
+	scene = new THREE.Scene();
+
+	camera = new THREE.PerspectiveCamera(
+		75,
+		window.innerWidth / window.innerHeight,
+		0.1,
+		1000
+	);
+	camera.position.set(0, 0, 0);
+	scene.add(camera);
+
+	renderer = new THREE.WebGLRenderer({ antialias: true });
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	document.body.appendChild(renderer.domElement);
+
+	// ---- СТАЯ ----
+	const room = new THREE.Mesh(
+		new THREE.BoxGeometry(20, 10, 20),
+		new THREE.MeshBasicMaterial({
+			color: 0x1faa3a,
+			side: THREE.BackSide
+		})
+	);
+	scene.add(room);
+
+	// ръбове (ъгли)
+	const edges = new THREE.EdgesGeometry(room.geometry);
+	const edgeLines = new THREE.LineSegments(
+		edges,
+		new THREE.LineBasicMaterial({ color: 0x000000 })
+	);
+	scene.add(edgeLines);
+
+	// ---- КОНУСИ ----
+	const coneGeo = new THREE.ConeGeometry(0.3, 1, 16);
+
+	function addCone(x, y, z) {
+		const m = new THREE.Mesh(
+			coneGeo,
+			new THREE.MeshBasicMaterial({
+				color: new THREE.Color(Math.random(), Math.random(), Math.random())
+			})
+		);
+		m.position.set(x, y, z);
+		scene.add(m);
+	}
+
+	for (let i = 0; i < 300; i++) {
+		const r = Math.random();
+		if (r < 0.2) addCone(Math.random()*18-9, -4.5, Math.random()*18-9);
+		else if (r < 0.4) addCone(Math.random()*18-9, 4.5, Math.random()*18-9);
+		else if (r < 0.6) addCone(9.5, Math.random()*8-4, Math.random()*18-9);
+		else if (r < 0.8) addCone(-9.5, Math.random()*8-4, Math.random()*18-9);
+		else addCone(Math.random()*18-9, Math.random()*8-4, 9.5);
+	}
+
+	window.addEventListener("resize", onResize);
+	window.addEventListener("deviceorientation", onOrientation, true);
+}
+
+function onResize() {
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// корекция за three.js камера
+const q1 = new THREE.Quaternion(
+	-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)
+);
+
+function onOrientation(e) {
+	if (e.alpha === null || e.beta === null || e.gamma === null) return;
+
+	const alpha = THREE.MathUtils.degToRad(e.alpha); // yaw
+	const beta  = THREE.MathUtils.degToRad(e.beta);  // pitch
+	const gamma = THREE.MathUtils.degToRad(e.gamma); // roll
+
+	const screenOrient = THREE.MathUtils.degToRad(window.orientation || 0);
+
+	const zee = new THREE.Vector3(0, 0, 1);
+	const euler = new THREE.Euler();
+	const quaternion = new THREE.Quaternion();
+
+	// Правилно съответствие на осите за three.js
+	euler.set(beta, alpha, -gamma, 'ZXY');
+	quaternion.setFromEuler(euler);
+
+	// Корекция за ориентацията на екрана
+	const qScreen = new THREE.Quaternion();
+	qScreen.setFromAxisAngle(zee, -screenOrient);
+	quaternion.multiply(qScreen);
+
+	// Ако няма начална ориентация, запазваме текущата
+	if (!initialQuaternion) initialQuaternion = quaternion.clone();
+
+	// Разлика спрямо началната позиция
+	quaternion.premultiply(initialQuaternion.clone().invert());
+
+	// Смекчаване
+	currentQ.slerp(quaternion, SMOOTH);
+	camera.quaternion.copy(currentQ);
+
+	// neck model
+	const neckOffset = 0.15;
+	const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+	camera.position.copy(forward.multiplyScalar(neckOffset));
+}
+
+function animate() {
+	requestAnimationFrame(animate);
+	renderer.render(scene, camera);
+}
+</script>
+
+</body>
+</html>
