@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Оглеждане в стая</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<style>
+body {
+	margin: 0;
+	overflow: hidden;
+	background: #000;
+}
+#btn {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	padding: 16px 24px;
+	font-size: 18px;
+	display: none;
+	z-index: 10;
+}
+</style>
+</head>
+<body>
+
+<button id="btn">Разреши движение</button>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+let scene, camera, renderer;
+let SMOOTH = 0.1;
+let targetRotation = new THREE.Euler(0,0,0,"YXZ");
+
+init();
+animate();
+
+function init() {
+	scene = new THREE.Scene();
+
+	camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+	camera.position.set(0, 0, 0);
+
+	renderer = new THREE.WebGLRenderer({ antialias: true });
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	document.body.appendChild(renderer.domElement);
+
+	scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+	let light = new THREE.DirectionalLight(0xffffff, 0.8);
+	light.position.set(5, 10, 7);
+	scene.add(light);
+
+	const roomW = 30, roomH = 15, roomD = 30; 
+	const roomGeometry = new THREE.BoxGeometry(roomW, roomH, roomD);
+	const room = new THREE.Mesh(
+		roomGeometry,
+		new THREE.MeshBasicMaterial({
+			color: 0x1faa3a,
+			side: THREE.BackSide
+		})
+	);
+	scene.add(room);
+
+	const edges = new THREE.EdgesGeometry(roomGeometry);
+	const edgeLines = new THREE.LineSegments(
+		edges,
+		new THREE.LineBasicMaterial({
+			color: 0xffffff,
+			transparent: true,
+			opacity: 0.9,
+			depthTest: true,
+			depthWrite: false
+		})
+	);
+	edgeLines.scale.set(0.999, 0.999, 0.999);
+	scene.add(edgeLines);
+
+	const coneHeight = 1.2;
+	const coneGeo = new THREE.ConeGeometry(0.35, coneHeight, 24);
+	coneGeo.translate(0, coneHeight/2, 0);
+
+	const baseConesPerWall = 60;
+	const wallArea = roomH * roomW;
+	const floorArea = roomW * roomD;
+	const conesPerFloor = Math.round(baseConesPerWall * (floorArea / wallArea));
+
+	const halfW = roomW / 2, halfH = roomH / 2, halfD = roomD / 2;
+
+	function rand(a, b) { return Math.random() * (b - a) + a; }
+
+	function addCone(pos) {
+		const cone = new THREE.Mesh(
+			coneGeo,
+			new THREE.MeshLambertMaterial({
+				color: new THREE.Color(rand(0,1), rand(0,1), rand(0,1))
+			})
+		);
+		cone.position.copy(pos);
+		scene.add(cone);
+	}
+
+	for (let i = 0; i < baseConesPerWall; i++) {
+		addCone(new THREE.Vector3( halfW - 0.5, rand(-halfH + coneHeight/2, halfH - coneHeight/2), rand(-halfD, halfD)));
+		addCone(new THREE.Vector3(-halfW + 0.5, rand(-halfH + coneHeight/2, halfH - coneHeight/2), rand(-halfD, halfD)));
+		addCone(new THREE.Vector3(rand(-halfW, halfW), rand(-halfH + coneHeight/2, halfH - coneHeight/2),  halfD - 0.5));
+		addCone(new THREE.Vector3(rand(-halfW, halfW), rand(-halfH + coneHeight/2, halfH - coneHeight/2), -halfD + 0.5));
+	}
+
+	for (let i = 0; i < conesPerFloor; i++) {
+		addCone(new THREE.Vector3(rand(-halfW, halfW), -halfH + 0.01, rand(-halfD, halfD)));
+		addCone(new THREE.Vector3(rand(-halfW, halfW), halfH - coneHeight - 0.01, rand(-halfD, halfD)));
+	}
+
+	window.addEventListener("resize", onResize);
+	setupOrientation();
+}
+
+function onResize() {
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function setupOrientation() {
+	const btn = document.getElementById("btn");
+
+	if (typeof DeviceOrientationEvent !== "undefined" &&
+		typeof DeviceOrientationEvent.requestPermission === "function") {
+		btn.style.display = "block";
+		btn.onclick = () => {
+			DeviceOrientationEvent.requestPermission().then(p => {
+				if (p === "granted") {
+					window.addEventListener("deviceorientation", onOrientation, true);
+					btn.remove();
+				}
+			});
+		};
+	} else {
+		window.addEventListener("deviceorientation", onOrientation, true);
+	}
+}
+
+// HANDS-ON deviceorientation без кватерниони
+function onOrientation(e) {
+	const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
+	const beta  = THREE.MathUtils.degToRad(e.beta || 0);
+	const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
+
+	// За landscape right
+	targetRotation.x = beta - Math.PI/2;   // нагоре/надолу
+	targetRotation.y = -alpha;              // наляво/надясно
+	targetRotation.z = -gamma;              // наклон на телефона
+
+	// плавно интерполиране
+	camera.rotation.x += (targetRotation.x - camera.rotation.x) * SMOOTH;
+	camera.rotation.y += (targetRotation.y - camera.rotation.y) * SMOOTH;
+	camera.rotation.z += (targetRotation.z - camera.rotation.z) * SMOOTH;
+}
+
+function animate() {
+	requestAnimationFrame(animate);
+	renderer.render(scene, camera);
+}
+</script>
+
+</body>
+</html>
