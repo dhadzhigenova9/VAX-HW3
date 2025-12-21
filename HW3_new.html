@@ -1,0 +1,156 @@
+<!DOCTYPE html> 
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Оглеждане в стая - Landscape</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    #btn {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        padding: 16px 24px; font-size: 18px;
+        display: none; z-index: 10;
+    }
+</style>
+</head>
+<body>
+
+<button id="btn">Разреши движение</button>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+var scene, camera, renderer;
+
+// Променливи за плавно движение
+var targetRotX = 0;
+var targetRotY = 0;
+var currentRotX = 0;
+var currentRotY = 0;
+var lerpFactor = 0.1; // Коефициент на заглаждане
+
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Задаваме ред на въртене YXZ, за да избегнем Gimbal Lock при оглеждане
+    camera.rotation.order = 'YXZ'; 
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    var light = new THREE.DirectionalLight(0xffffff, 0.8);
+    light.position.set(5, 10, 7);
+    scene.add(light);
+
+    // Създаване на стаята
+    var roomW = 30, roomH = 15, roomD = 30; 
+    var roomGeometry = new THREE.BoxGeometry(roomW, roomH, roomD);
+    var room = new THREE.Mesh(
+        roomGeometry,
+        new THREE.MeshBasicMaterial({ color: 0x1faa3a, side: THREE.BackSide })
+    );
+    scene.add(room);
+
+    // Конуси
+    var coneHeight = 1.2;
+    var coneGeo = new THREE.ConeGeometry(0.35, coneHeight, 24);
+    coneGeo.translate(0, coneHeight/2, 0); 
+
+    function addCone(pos) {
+        var cone = new THREE.Mesh(
+            coneGeo,
+            new THREE.MeshLambertMaterial({ color: new THREE.Color(Math.random(), Math.random(), Math.random()) })
+        );
+        cone.position.copy(pos);
+        scene.add(cone);
+    }
+
+    var halfW = roomW / 2, halfH = roomH / 2, halfD = roomD / 2;
+    for (var i = 0; i < 60; i++) {
+        addCone(new THREE.Vector3(halfW - 0.1, (Math.random()-0.5)*roomH, (Math.random()-0.5)*roomD));
+        addCone(new THREE.Vector3(-halfW + 0.1, (Math.random()-0.5)*roomH, (Math.random()-0.5)*roomD));
+        addCone(new THREE.Vector3((Math.random()-0.5)*roomW, (Math.random()-0.5)*roomH, halfD - 0.1));
+        addCone(new THREE.Vector3((Math.random()-0.5)*roomW, (Math.random()-0.5)*roomH, -halfD + 0.1));
+    }
+    for (var i = 0; i < 100; i++) {
+        addCone(new THREE.Vector3((Math.random()-0.5)*roomW, -halfH, (Math.random()-0.5)*roomD));
+        addCone(new THREE.Vector3((Math.random()-0.5)*roomW, halfH - coneHeight, (Math.random()-0.5)*roomD));
+    }
+
+    window.addEventListener("resize", onResize);
+    setupOrientation();
+}
+
+function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function setupOrientation() {
+    var btn = document.getElementById("btn");
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        btn.style.display = "block";
+        btn.onclick = () => {
+            DeviceOrientationEvent.requestPermission().then(p => {
+                if (p === "granted") {
+                    window.addEventListener("deviceorientation", onOrientation);
+                    btn.remove();
+                }
+            });
+        };
+    } else {
+        window.addEventListener("deviceorientation", onOrientation);
+    }
+}
+
+/**
+ * Логика за Landscape Right:
+ * В режим Landscape Right:
+ * - Накланянето на телефона "напред-назад" (Pitch) се предава чрез 'gamma'
+ * - Въртенето "наляво-надясно" (Yaw) се предава чрез 'alpha'
+ */
+function onOrientation(e) {
+    // Alpha е въртенето около Z оста на устройството (0 до 360)
+    var alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0;
+    // Gamma е наклонът наляво-надясно (-90 до 90)
+    // В Landscape Right, това контролира Pitch-а (нагоре-надолу) на погледа
+    var gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0;
+
+    // 1. Контрол наляво-надясно (Yaw)
+    // Използваме alpha. Тъй като сме в Landscape, добавяме офсет, ако е нужно, 
+    // но в основни линии alpha отговаря за компасната посока.
+    targetRotY = alpha;
+
+    // 2. Контрол нагоре-надолу (Pitch)
+    // В Landscape Right, когато накланяте телефона към себе си или далеч от себе си, 
+    // стойността на gamma се променя.
+    targetRotX = gamma; 
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    // Интерполация за плавно движение (Lerp)
+    currentRotX += (targetRotX - currentRotX) * lerpFactor;
+    currentRotY += (targetRotY - currentRotY) * lerpFactor;
+
+    // Прилагаме ротацията директно върху камерата
+    // В режим Landscape Right осите се разменят:
+    camera.rotation.x = currentRotX; 
+    camera.rotation.y = currentRotY;
+
+    renderer.render(scene, camera);
+}
+</script>
+
+</body>
+</html>
