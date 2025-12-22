@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Виртуален куб - Landscape right</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+          "vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+        }
+      }
+    </script>
+</head>
+<body>
+<script type="module">
+
+import * as THREE from "three";
+import * as VAX from "vax";
+
+
+VAX.initParallax(animate, {
+    eyeSeparation: 0.12
+});
+
+VAX.scene.background = new THREE.Color(0x000000);
+
+var ambient = new THREE.AmbientLight(0xffffff, 2.0); 
+VAX.scene.add(ambient);
+
+VAX.light.position.set(12, 10, 6);
+VAX.light.intensity = 2.0;
+
+var dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight2.position.set(-10, 8, -6);
+VAX.scene.add(dirLight2);
+
+VAX.camera.position.set(0, 0, 0);
+var cameraParent = new THREE.Object3D();
+cameraParent.add(VAX.camera);
+VAX.scene.add(cameraParent);
+
+var targetRotX = 0, targetRotY = 0;
+var currentRotX = 0, currentRotY = 0;
+var lastAlpha = null, accumulatedY = 0;
+var LERP = 0.1;
+
+var ROOM_SIZE = 30;
+var HALF = ROOM_SIZE / 2;
+var CONES_FLOOR = 200;
+var CONES_CEILING = 200;
+var CONES_WALL = 150;
+
+function createRoom() {
+    var material = new THREE.MeshStandardMaterial({
+        color: 0x1faa3a,
+        side: THREE.BackSide,
+        roughness: 0.65,
+        metalness: 0
+    });
+
+    var geo = new THREE.BoxGeometry(ROOM_SIZE, ROOM_SIZE, ROOM_SIZE);
+    var cube = new THREE.Mesh(geo, material);
+    VAX.scene.add(cube);
+
+    var edges = new THREE.EdgesGeometry(geo);
+    var lines = new THREE.LineSegments(
+        edges,
+        new THREE.LineBasicMaterial({ color: 0x000000 })
+    );
+    VAX.scene.add(lines);
+}
+
+function createCones() {
+    var h = 1.2;
+    var coneGeo = new THREE.ConeGeometry(0.35, h, 24);
+    coneGeo.translate(0, h / 2, 0);
+
+    function makeCone(x, y, z) {
+        var cone = new THREE.Mesh(
+            coneGeo,
+            new THREE.MeshStandardMaterial({ 
+                color: Math.random() * 0xffffff,
+                roughness: 0.2,
+                metalness: 0.3
+            })
+        );
+        cone.position.set(x, y, z);
+        VAX.scene.add(cone);
+    }
+
+    function rand(v) { return Math.random() * v * 2 - v; }
+    function randInside() { return rand(HALF - 1); }
+
+    for (var i = 0; i < CONES_FLOOR; i++) makeCone(randInside(), -HALF, randInside());
+    for (var i = 0; i < CONES_CEILING; i++) makeCone(randInside(), HALF - h, randInside());
+    for (var i = 0; i < CONES_WALL; i++) {
+        makeCone(HALF - h, randInside(), randInside());
+        makeCone(-HALF + h, randInside(), randInside());
+        makeCone(randInside(), randInside(), HALF - h);
+        makeCone(randInside(), randInside(), -HALF + h);
+    }
+}
+
+function setupOrientation() {
+    if (typeof DeviceOrientationEvent === "undefined") return;
+    if (DeviceOrientationEvent.requestPermission) {
+        DeviceOrientationEvent.requestPermission().catch(()=>{});
+    }
+    window.addEventListener("deviceorientation", onOrientation, true);
+}
+
+function onOrientation(e) {
+    if (e.alpha == null) return;
+
+    if (lastAlpha != null) {
+        var d = e.alpha - lastAlpha;
+        if (d > 180) d -= 360;
+        if (d < -180) d += 360;
+        accumulatedY += d;
+    }
+    lastAlpha = e.alpha;
+
+    var pitch = e.gamma < 0 ? e.gamma + 90 : e.gamma - 90;
+    pitch = THREE.MathUtils.clamp(pitch, -85, 85);
+
+    targetRotX = THREE.MathUtils.degToRad(pitch);
+    targetRotY = THREE.MathUtils.degToRad(accumulatedY);
+}
+
+function animate(t, dT) {
+    currentRotX += (targetRotX - currentRotX) * LERP;
+    currentRotY += (targetRotY - currentRotY) * LERP;
+
+    VAX.camera.rotation.x = currentRotX;
+    cameraParent.rotation.y = currentRotY;
+}
+
+createRoom();
+createCones();
+setupOrientation();
+
+</script>
+</body>
+</html>
