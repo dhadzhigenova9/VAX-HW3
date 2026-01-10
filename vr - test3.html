@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+	<meta charset="utf-8">
+	<title>Прозрачни додекаедри + движение на телефона</title>
+
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+			"vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+		}
+	}
+	</script>
+
+	<style>
+	body {
+		margin: 0;
+		overflow: hidden;
+		background: #000;
+	}
+	</style>
+</head>
+
+<body>
+
+<script type="module">
+import * as THREE from "three";
+import * as VAX from "vax";
+
+
+VAX.init(animate);
+
+VAX.camera.fov = 30;
+VAX.camera.updateProjectionMatrix();
+VAX.camera.position.set(0, 0, 0);
+
+VAX.scene.background = new THREE.CubeTextureLoader().load([
+	'Tantolunden4/posx.jpg', 'Tantolunden4/negx.jpg',
+	'Tantolunden4/posy.jpg', 'Tantolunden4/negy.jpg',
+	'Tantolunden4/posz.jpg', 'Tantolunden4/negz.jpg'
+]);
+VAX.scene.background.colorSpace = THREE.LinearSRGBColorSpace;
+
+var crystalMaterial = new THREE.MeshPhysicalMaterial({
+	transmission: 1.0,
+	ior: 1.3,
+	thickness: 0.6,
+	roughness: 0.12,
+	envMapIntensity: 1.1
+});
+
+var baseGeometry = new THREE.DodecahedronGeometry(0.07, 0);
+
+var crystals = [];
+var COUNT = 220;
+var MIN_R = 1.8;
+var MAX_R = 5.0;
+
+for (var i = 0; i < COUNT; i++) {
+
+	var t = i / COUNT;
+	var inc = Math.PI * (3 - Math.sqrt(5));
+	var y = 1 - 2 * t;
+	var r = Math.sqrt(1 - y * y);
+	var phi = i * inc;
+
+	var dir = new THREE.Vector3(
+		Math.cos(phi) * r,
+		y,
+		Math.sin(phi) * r
+	);
+
+	var dist = MIN_R + Math.random() * (MAX_R - MIN_R);
+
+	var mesh = new THREE.Mesh(baseGeometry, crystalMaterial);
+
+	mesh.position.copy(dir.multiplyScalar(dist));
+
+	mesh.rotation.set(
+		Math.random() * Math.PI,
+		Math.random() * Math.PI,
+		Math.random() * Math.PI
+	);
+
+	var spinAxis = new THREE.Vector3(
+		Math.random(),
+		Math.random(),
+		Math.random()
+	).normalize();
+
+	var spinSpeed = 0.008 + Math.random() * 0.018;
+
+	VAX.scene.add(mesh);
+
+	crystals.push({
+		mesh,
+		spinAxis,
+		spinSpeed
+	});
+}
+
+var SMOOTH = 0.1;
+var currentQ = new THREE.Quaternion();
+
+var zee = new THREE.Vector3(0, 0, 1);
+var q0 = new THREE.Quaternion();
+var q1 = new THREE.Quaternion(
+	-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)
+);
+
+window.addEventListener("deviceorientation", onOrientation, true);
+
+function onOrientation(e) {
+	var alpha = THREE.MathUtils.degToRad(e.alpha || 0);
+	var beta  = THREE.MathUtils.degToRad(e.beta || 0);
+	var gamma = THREE.MathUtils.degToRad(e.gamma || 0);
+
+	var screenAngle = 0;
+	if (screen.orientation && typeof screen.orientation.angle === "number") {
+		screenAngle = THREE.MathUtils.degToRad(screen.orientation.angle);
+	}
+
+	var q = new THREE.Quaternion();
+	q.setFromEuler(new THREE.Euler(beta, alpha, -gamma, "YXZ"));
+	q.multiply(q1);
+	q.multiply(q0.setFromAxisAngle(zee, -screenAngle));
+
+	currentQ.slerp(q, SMOOTH);
+	VAX.camera.quaternion.copy(currentQ);
+}
+
+
+function animate() {
+	crystals.forEach(function (c) {
+		c.mesh.rotateOnAxis(c.spinAxis, c.spinSpeed);
+	});
+}
+
+</script>
+
+</body>
+</html>
