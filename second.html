@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+	<meta charset="utf-8">
+	<title>Прозрачни додекаедри + стабилна ориентация</title>
+
+	<meta name="viewport"
+		  content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+			"vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+		}
+	}
+	</script>
+
+	<style>
+	body {
+		margin: 0;
+		overflow: hidden;
+		background: #000;
+	}
+	</style>
+</head>
+
+<body>
+
+<script type="module">
+import * as THREE from "three";
+import * as VAX from "vax";
+
+/* === INIT === */
+
+VAX.init(animate);
+
+VAX.camera.fov = 30;
+VAX.camera.updateProjectionMatrix();
+VAX.camera.position.set(0, 0, 0);
+
+/* === SKYBOX === */
+
+VAX.scene.background = new THREE.CubeTextureLoader().load([
+	'Tantolunden4/posx.jpg', 'Tantolunden4/negx.jpg',
+	'Tantolunden4/posy.jpg', 'Tantolunden4/negy.jpg',
+	'Tantolunden4/posz.jpg', 'Tantolunden4/negz.jpg'
+]);
+VAX.scene.background.colorSpace = THREE.LinearSRGBColorSpace;
+
+/* === МАТЕРИАЛ (МИНИМАЛЕН) === */
+
+const crystalMaterial = new THREE.MeshPhysicalMaterial({
+	transmission: 1.0,
+	ior: 1.3,
+	thickness: 0.6,
+	roughness: 0.12,
+	envMapIntensity: 1.1
+});
+
+/* === ПРАВИЛЕН ДОДЕКАЕДЪР === */
+
+const baseGeometry = new THREE.DodecahedronGeometry(0.07, 0);
+
+/* === КРИСТАЛИ === */
+
+const crystals = [];
+const COUNT = 220;
+const MIN_R = 1.8;
+const MAX_R = 5.0;
+
+// Fibonacci sphere distribution
+for (let i = 0; i < COUNT; i++) {
+
+	const t = i / COUNT;
+	const inc = Math.PI * (3 - Math.sqrt(5));
+	const y = 1 - 2 * t;
+	const r = Math.sqrt(1 - y * y);
+	const phi = i * inc;
+
+	const dir = new THREE.Vector3(
+		Math.cos(phi) * r,
+		y,
+		Math.sin(phi) * r
+	);
+
+	const dist = MIN_R + Math.random() * (MAX_R - MIN_R);
+
+	const mesh = new THREE.Mesh(baseGeometry, crystalMaterial);
+	mesh.position.copy(dir.multiplyScalar(dist));
+
+	mesh.rotation.set(
+		Math.random() * Math.PI,
+		Math.random() * Math.PI,
+		Math.random() * Math.PI
+	);
+
+	const spinAxis = new THREE.Vector3(
+		Math.random(),
+		Math.random(),
+		Math.random()
+	).normalize();
+
+	const spinSpeed = 0.008 + Math.random() * 0.018;
+
+	VAX.scene.add(mesh);
+
+	crystals.push({
+		mesh: mesh,
+		spinAxis: spinAxis,
+		spinSpeed: spinSpeed
+	});
+}
+
+/* === ORIENTATION (СТАБИЛНА ИНИЦИАЛИЗАЦИЯ) === */
+
+let initialized = false;
+const SMOOTH = 0.1;
+
+const currentQ = new THREE.Quaternion();
+const zee = new THREE.Vector3(0, 0, 1);
+const q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(
+	-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)
+);
+
+window.addEventListener("deviceorientation", onOrientation, true);
+
+function onOrientation(e) {
+
+	const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
+	const beta  = THREE.MathUtils.degToRad(e.beta || 0);
+	const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
+
+	let screenAngle = 0;
+	if (screen.orientation && typeof screen.orientation.angle === "number") {
+		screenAngle = THREE.MathUtils.degToRad(screen.orientation.angle);
+	}
+
+	const q = new THREE.Quaternion();
+	q.setFromEuler(new THREE.Euler(beta, alpha, -gamma, "YXZ"));
+	q.multiply(q1);
+	q.multiply(q0.setFromAxisAngle(zee, -screenAngle));
+
+	// първо събитие = директна инициализация
+	if (!initialized) {
+		currentQ.copy(q);
+		VAX.camera.quaternion.copy(currentQ);
+		initialized = true;
+		return;
+	}
+
+	currentQ.slerp(q, SMOOTH);
+	VAX.camera.quaternion.copy(currentQ);
+}
+
+/* === ANIMATION === */
+
+function animate() {
+	crystals.forEach(function (c) {
+		c.mesh.rotateOnAxis(c.spinAxis, c.spinSpeed);
+	});
+}
+
+</script>
+
+</body>
+</html>
