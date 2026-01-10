@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+	<meta charset="utf-8">
+	<title>Кубична текстура + движение на телефона</title>
+
+	<meta name="viewport"
+		  content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+			"vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+		}
+	}
+	</script>
+
+	<style>
+	body {
+		margin: 0;
+		overflow: hidden;
+		background: #000;
+	}
+
+	#btn {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		padding: 16px 24px;
+		font-size: 18px;
+		z-index: 10;
+	}
+	</style>
+</head>
+
+<body>
+
+<button id="btn" style="display:none;">Разреши движение</button>
+
+<script type="module">
+import * as THREE from "three";
+import * as VAX from "vax";
+
+VAX.init(animate);
+
+/* Камера */
+VAX.camera.fov = 30;
+VAX.camera.updateProjectionMatrix();
+VAX.camera.position.set(0, 0, 0);
+
+/* Кубична текстура (skybox) */
+VAX.scene.background = new THREE.CubeTextureLoader().load([
+	'cube/posx.jpg', 'cube/negx.jpg',
+	'cube/posy.jpg', 'cube/negy.jpg',
+	'cube/posz.jpg', 'cube/negz.jpg'
+]);
+VAX.scene.background.colorSpace = THREE.LinearSRGBColorSpace;
+
+/* === ОРИЕНТАЦИЯ НА ТЕЛЕФОНА === */
+
+const SMOOTH = 0.1;
+let currentQ = new THREE.Quaternion();
+
+const zee = new THREE.Vector3(0, 0, 1);
+const q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(
+	-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)
+);
+
+setupOrientation();
+
+function setupOrientation() {
+	const btn = document.getElementById("btn");
+
+	if (
+		typeof DeviceOrientationEvent !== "undefined" &&
+		typeof DeviceOrientationEvent.requestPermission === "function"
+	) {
+		btn.style.display = "block";
+		btn.onclick = () => {
+			DeviceOrientationEvent.requestPermission().then(p => {
+				if (p === "granted") {
+					window.addEventListener(
+						"deviceorientation",
+						onOrientation,
+						true
+					);
+					btn.remove();
+				}
+			});
+		};
+	} else {
+		window.addEventListener("deviceorientation", onOrientation, true);
+	}
+}
+
+function onOrientation(e) {
+	const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
+	const beta  = THREE.MathUtils.degToRad(e.beta || 0);
+	const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
+
+	let screenAngle = 0;
+	if (screen.orientation && typeof screen.orientation.angle === "number") {
+		screenAngle = THREE.MathUtils.degToRad(screen.orientation.angle);
+	}
+
+	const q = new THREE.Quaternion();
+	q.setFromEuler(new THREE.Euler(beta, alpha, -gamma, "YXZ"));
+	q.multiply(q1);
+	q.multiply(q0.setFromAxisAngle(zee, -screenAngle));
+
+	currentQ.slerp(q, SMOOTH);
+	VAX.camera.quaternion.copy(currentQ);
+}
+
+/* Анимация */
+function animate() {
+	// нищо друго не е нужно
+}
+</script>
+
+</body>
+</html>
